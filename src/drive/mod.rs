@@ -114,7 +114,7 @@ impl QuarkDrive {
             .pool_idle_timeout(Duration::from_secs(0))
             .pool_max_idle_per_host(0) // 关键：禁止连接池保留连接
             .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(300)) // 增加超时时间到 5 分钟，适应大文件上传
             .build()?;
         let download_client = ClientBuilder::new(download_client)
             .with(RetryTransientMiddleware::new_with_policy(retry_policy))
@@ -759,15 +759,17 @@ impl QuarkDrive {
             req.upload_id
         );
         let url = reqwest::Url::parse(&oss_url)?;
+        
+        // 使用 download_client 进行分块上传，它有更适合大文件的连接池配置
         let res = self
-            .client
+            .download_client
             .put(url.clone())
             .header("Authorization", req.auth_key.clone())
             .header("Content-Type", req.mime_type.clone())
             .header("x-oss-date", req.utc_time.clone())
             .header("x-oss-user-agent", "aliyun-sdk-js/6.6.1 Chrome 98.0.4758.80 on Windows 10 64-bit")
             .header("Referer", REFERER)
-            .body(req.part_bytes)
+            .body(req.part_bytes.clone()) // 克隆请求体，以便重试时使用
             .send().await?;
 
         match res.error_for_status_ref() {
@@ -793,9 +795,16 @@ impl QuarkDrive {
                         | StatusCode::GATEWAY_TIMEOUT),
                     ) => {
                         time::sleep(Duration::from_secs(2)).await;
+                        // 重试时重新设置所有请求头和请求体
                         let res = self
-                            .client
+                            .download_client
                             .put(url)
+                            .header("Authorization", req.auth_key.clone())
+                            .header("Content-Type", req.mime_type.clone())
+                            .header("x-oss-date", req.utc_time.clone())
+                            .header("x-oss-user-agent", "aliyun-sdk-js/6.6.1 Chrome 98.0.4758.80 on Windows 10 64-bit")
+                            .header("Referer", REFERER)
+                            .body(req.part_bytes)
                             .send()
                             .await?
                             .error_for_status()?;
