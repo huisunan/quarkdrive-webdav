@@ -1162,18 +1162,17 @@ impl DavFile for QuarkDavFile {
     fn flush(&mut self) -> FsFuture<()> {
         debug!(file_id = %self.file.fid, file_name = %self.file.file_name, "file: flush");
         async move {
-            // if self.upload_state.flush_count >=1 {
-            //     // maybe zero byte file, try to upload again
-            //     // TODO :
-            //     // How to judge if a file is zero byte?
-            //     // now it is not working
-            //     // self.upload_mini_byte_file().await?;
-            //     // return Ok(());
-            // }
-
             if !self.upload_state.is_uploading {
                 debug!(file_id = %self.file.fid, file_name = %self.file.file_name, "file: flush - no temp file path");
                 self.upload_state.flush_count = self.upload_state.flush_count + 1;
+                
+                // Check if it's a zero byte file (flush called but no data written)
+                if self.upload_state.flush_count >= 1 {
+                    debug!(file_id = %self.file.fid, file_name = %self.file.file_name, "file: flush - probably zero byte file, uploading");
+                    self.upload_mini_byte_file().await?;
+                    return Ok(());
+                }
+                
                 return Ok(());
             }
 
