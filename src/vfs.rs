@@ -926,8 +926,8 @@ impl QuarkDavFile {
         })?;
         let mut file = tokio::io::BufReader::new(file);
         let chunk_count = self.upload_state.chunk_count;
-        // 定义一个字符串数组，size = chunk_count
-        let mut etags = vec![String::new(); chunk_count as usize];
+        // 使用动态数组收集实际上传的etags
+        let mut etags = Vec::new();
         // 分块上传文件,将temp_path目录所在文件,切成chunk_count块，每块大小 chunk_size，分块上传文件到夸克网盘
         // auth
         let mime_type = &self.upload_state.mime_type;
@@ -995,7 +995,8 @@ impl QuarkDavFile {
             if etag_from_up_part == "finish" {
                 return Ok(());
             }
-            etags[(chunk_idx - 1) as usize] = etag_from_up_part;
+            // 将实际上传的etag添加到数组中
+            etags.push(etag_from_up_part);
             // self.upload_state.chunk += 1;
         }
         let callback = self.upload_state.callback.clone().unwrap();
